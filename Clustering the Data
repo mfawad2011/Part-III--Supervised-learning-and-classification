@@ -1,0 +1,31 @@
+import numpy as np
+
+# Calculate the covariance matrix of the training set
+cov_matrix = np.cov(undamaged_train.T)
+inv_cov_matrix = np.linalg.inv(cov_matrix)
+
+# Mean of the training set
+mean_train = np.mean(undamaged_train, axis=0)
+
+# Mahalanobis distance function
+def mahalanobis_distance(x, mean, inv_cov_matrix):
+    diff = x - mean
+    return np.sqrt(np.dot(np.dot(diff, inv_cov_matrix), diff.T))
+
+# Calculate Mahalanobis distance for each observation in the test set
+mahalanobis_distances = test_data.apply(lambda x: mahalanobis_distance(x, mean_train, inv_cov_matrix), axis=1)
+
+# Determine the threshold for the 5% significance level
+threshold = np.percentile(mahalanobis_distances, 95)
+
+# Classify the observations
+predictions = (mahalanobis_distances > threshold).astype(int)
+
+# Calculate Type I and Type II errors
+true_positives = np.sum((predictions == 1) & (np.array(test_labels) == 1))
+true_negatives = np.sum((predictions == 0) & (np.array(test_labels) == 0))
+false_positives = np.sum((predictions == 1) & (np.array(test_labels) == 0))
+false_negatives = np.sum((predictions == 0) & (np.array(test_labels) == 1))
+
+# Display the results
+true_positives, true_negatives, false_positives, false_negatives
