@@ -1,0 +1,33 @@
+from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
+
+# Determine the optimal number of clusters using the Elbow method for K-means
+sse = []
+for k in range(1, 11):
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans.fit(undamaged_train)
+    sse.append(kmeans.inertia_)
+
+# Plotting the SSE to visualize the elbow
+plt.figure(figsize=(10, 6))
+plt.plot(range(1, 11), sse, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('SSE')
+plt.title('Elbow Method for Optimal Number of Clusters')
+plt.show()
+
+# Choosing an appropriate number of clusters (e.g., based on the elbow method)
+n_clusters = 3  # Example, this should ideally be based on the elbow plot
+
+# K-means clustering
+kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+kmeans.fit(undamaged_train)
+undamaged_train['Cluster'] = kmeans.labels_
+
+# Gaussian Mixture Model clustering
+gmm = GaussianMixture(n_components=n_clusters, random_state=42)
+undamaged_train['Cluster_GMM'] = gmm.fit_predict(undamaged_train.drop('Cluster', axis=1))
+
+# Displaying the first few rows of the clustered data
+undamaged_train.head()
