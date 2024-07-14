@@ -1,31 +1,140 @@
+import scipy.io
+import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.impute import SimpleImputer
+from sklearn.covariance import EllipticEnvelope
+from sklearn.mixture import GaussianMixture
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
 
-# Calculate the covariance matrix of the training set
-cov_matrix = np.cov(undamaged_train.T)
-inv_cov_matrix = np.linalg.inv(cov_matrix)
+# Load the .mat file
+data = scipy.io.loadmat('/mnt/data/Data24.mat')
 
-# Mean of the training set
-mean_train = np.mean(undamaged_train, axis=0)
+# Extract the data
+undamaged_data = pd.DataFrame(data['Undmg'], columns=['Frequency1', 'Frequency2', 'Frequency3'])
+damaged_data = pd.DataFrame(data['Dmg'], columns=['Frequency1', 'Frequency2', 'Frequency3'])
 
-# Mahalanobis distance function
-def mahalanobis_distance(x, mean, inv_cov_matrix):
-    diff = x - mean
-    return np.sqrt(np.dot(np.dot(diff, inv_cov_matrix), diff.T))
+# Part I - Data visualization and cleansing
+# Plotting the 3D scatter plot for undamaged and damaged data
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(undamaged_data['Frequency1'], undamaged_data['Frequency2'], undamaged_data['Frequency3'], c='b', label='Undamaged')
+ax.scatter(damaged_data['Frequency1'], damaged_data['Frequency2'], damaged_data['Frequency3'], c='r', label='Damaged')
+ax.set_xlabel('Frequency 1')
+ax.set_ylabel('Frequency 2')
+ax.set_zlabel('Frequency 3')
+plt.legend()
+plt.show()
 
-# Calculate Mahalanobis distance for each observation in the test set
-mahalanobis_distances = test_data.apply(lambda x: mahalanobis_distance(x, mean_train, inv_cov_matrix), axis=1)
+# Handling missing data with mean imputation
+imputer = SimpleImputer(strategy='mean')
+undamaged_data_imputed = pd.DataFrame(imputer.fit_transform(undamaged_data), columns=undamaged_data.columns)
+damaged_data_imputed = pd.DataFrame(imputer.transform(damaged_data), columns=damaged_data.columns)
 
-# Determine the threshold for the 5% significance level
+# Detecting and handling outliers using EllipticEnvelope
+outlier_detector = EllipticEnvelope(contamination=0.1)
+outliers_undamaged = outlier_detector.fit_predict(undamaged_data_imputed) == 1
+outliers_damaged = outlier_detector.fit_predict(damaged_data_imputed) == 1
+
+# Filter out outliers
+undamaged_data_clean = undamaged_data_imputed[outliers_undamaged]
+damaged_data_clean = damaged_data_imputed[outliers_damaged]
+
+# Part II - Unsupervised learning and outlier detection
+# Split the undamaged data into training and test sets
+train_undamaged, test_undamaged = train_test_split(undamaged_data_clean, test_size=0.25, random_state=42)
+
+# Combine test data
+test_data = pd.concat([test_undamaged, damaged_data_clean])
+
+# Fit the Mahalanobis distance-based classifier
+cov = EllipticEnvelope().fit(train_undamaged)
+mahalanobis_distances = cov.mahalanobis(test_data)
 threshold = np.percentile(mahalanobis_distances, 95)
 
-# Classify the observations
-predictions = (mahalanobis_distances > threshold).astype(int)
+# Predict using the threshold
+predictions = mahalanobis_distances > threshold
+true_labels = [0] * len(test_undamaged) + [1] * len(damaged_data_clean)
 
-# Calculate Type I and Type II errors
-true_positives = np.sum((predictions == 1) & (np.array(test_labels) == 1))
-true_negatives = np.sum((predictions == 0) & (np.array(test_labels) == 0))
-false_positives = np.sum((predictions == 1) & (np.array(test_labels) == 0))
-false_negatives = np.sum((predictions == 0) & (np.array(test_labels) == 1))
+# Calculate performance
+conf_matrix = confusion_matrix(true_labels, predictions)
+class_report = classification_report(true_labels, predictions)
 
-# Display the results
-true_positives, true_negatives, false_positives, false_negatives
+# Part III - Supervised learning and classification
+# Clustering using Gaussian Mixture Model
+gmm = GaussianMixture(n_components=3, random_state=42).fit(train_undamaged)
+clusters = gmm.predict(train_undamaged)
+
+# Add cluster labels to training data
+train_undamaged['Cluster'] = clusters
+
+# Split data for supervised learning
+train_data = pd.concat([train_undamaged, damaged_data_clean])
+train_labels = [0] * len(train_undamaged) + [1] * len(damaged_data_clean)
+
+# Experiment with different classifiers
+classifiers = {
+    'Random Forest': RandomForestClassifier(random_state=42),
+    'SVM': SVC(random_state=42),
+    'KNN': KNeighborsClassifier()
+}
+
+results = {}
+for name, clf in classifiers.items():
+    clf.fit(train_data.drop('Cluster', axis=1), train_labels)
+    predictions = clf.predict(test_data)
+    conf_matrix = confusion_matrix(true_labels, predictions)
+    class_report = classification_report(true_labels, predictions)
+    results[name] = (conf_matrix, class_report)
+
+import ace_tools as tools; tools.display_dataframe_to_user(name="Confusion Matrix and Classification Report", dataframe=pd.DataFrame(results))
+
+results
+
+
+
+
+
+
+
+
+Confusion Matrix:
+[[167, 2],
+ [0, 225]]
+
+Classification Report:
+              precision    recall  f1-score   support
+
+          0       1.00      0.99      0.99       169
+          1       0.99      1.00      1.00       225
+
+   accuracy                           0.99       394
+  macro avg       1.00      0.99      0.99       394
+
+
+
+
+
+- **SVM**:
+        0       0.43      1.00      0.60       169
+        1       0.00      0.00      0.00       225
+
+ accuracy                           0.43       394
+macro avg       0.21      0.50      0.30       394
+
+
+
+- **KNN**:
+        0       0.92      0.99      0.95       169
+        1       0.99      0.93      0.96       225
+
+ accuracy                           0.96       394
+macro avg       0.95      0.96      0.96       394
+
+
+
+
